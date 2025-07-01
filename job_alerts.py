@@ -63,7 +63,7 @@ def load_companies() -> List[Dict]:
 
 
 def normalize(text: str) -> str:
-    return re.sub("\s+", " ", text).strip().lower()
+    return re.sub(r"\s+", " ", text).strip().lower()
 
 
 def is_analytics_role(title: str) -> bool:
