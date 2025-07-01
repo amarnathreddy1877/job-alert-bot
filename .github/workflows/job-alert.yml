@@ -1,0 +1,32 @@
+name: Job Alerts (hourly)
+
+on:
+  # 10 separate cron events → 8 AM … 5 PM Eastern (12–21 UTC in summer)
+  schedule:
+    - cron:  '0 12 * * *'
+    - cron:  '0 13 * * *'
+    - cron:  '0 14 * * *'
+    - cron:  '0 15 * * *'
+    - cron:  '0 16 * * *'
+    - cron:  '0 17 * * *'
+    - cron:  '0 18 * * *'
+    - cron:  '0 19 * * *'
+    - cron:  '0 20 * * *'
+    - cron:  '0 21 * * *'
+  workflow_dispatch:   # allows manual “Run workflow” button
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - run: python job_alerts.py
+        env:
+          MJ_API_KEY:      ${{ secrets.MJ_API_KEY }}
+          MJ_API_SECRET:   ${{ secrets.MJ_API_SECRET }}
+          SENDER_EMAIL:    ${{ secrets.SENDER_EMAIL }}
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
