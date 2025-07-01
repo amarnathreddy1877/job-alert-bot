@@ -86,7 +86,7 @@ def fetch_generic(company: Dict) -> List[Dict]:
         if not title or not is_analytics_role(title):
             continue
         link = requests.compat.urljoin(company["url"], a["href"])
-        loc_tag = a.find_next(string=re.compile("[A-Za-z]{2}\s*,?\s*\w{2}", re.I))
+        loc_tag = a.find_next(string=re.compile(r"[A-Za-z]{2}\s*,?\s*\w{2}", re.I))
         loc = loc_tag.strip() if loc_tag else ""
         if loc and not in_usa(loc):
             continue
