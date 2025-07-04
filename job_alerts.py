@@ -161,23 +161,23 @@ def build_email(jobs_by_company: Dict[str, List[Dict]]) -> Dict:
     return {"subject": subject, "html": html_body}
 
 
-def send_email(email: Dict) -> None:
-    mailjet = Client(auth=(MJ_API_KEY, MJ_API_SECRET), version="v3.1")
-    data = {
-        "Messages": [
-            {
-                "From": {"Email": SENDER, "Name": "Job Alerts Bot"},
-                "To": [{"Email": RECIPIENT, "Name": "You"}],
-                "Subject": email["subject"],
-                "HTMLPart": email["html"],
-            }
-        ]
-    }
-    result = mailjet.send.create(data=data)
-    if result.status_code not in (200, 201):
-        raise RuntimeError(f"Mailjet error: {result.status_code} {result.json()}")
-    print("Email sent:", result.status_code)
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 
+SENDGRID_API_KEY = os.environ["SENDGRID_API_KEY"]
+
+def send_email(email: dict) -> None:
+    message = Mail(
+        from_email=os.environ.get("SENDER_EMAIL"),
+        to_emails=os.environ.get("RECIPIENT_EMAIL"),
+        subject=email["subject"],
+        html_content=email["html"]
+    )
+    sg = SendGridAPIClient(SENDGRID_API_KEY)
+    response = sg.send(message)
+    print("SendGrid status:", response.status_code)
+    if response.status_code not in (200, 202):
+        raise RuntimeError(f"SendGrid error: {response.status_code}: {response.body}")
 
 def main() -> None:
     companies = load_companies()
