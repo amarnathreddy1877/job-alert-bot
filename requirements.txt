@@ -1,3 +1,4 @@
 requests
 beautifulsoup4
-mailjet-rest
+sendgrid
+python-http-client
