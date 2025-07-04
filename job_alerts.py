@@ -3,66 +3,61 @@ import re
 import json
 import datetime as dt
 from typing import List, Dict
+
 import requests
 from bs4 import BeautifulSoup
-from mailjet_rest import Client
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 
-"""
-job_alerts.py
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Scrapes career pages of H‑1B‑friendly companies for entry‑ to mid‑level
-Data‑Analytics roles located in the United States and emails an hourly digest
-via Mailjet. Designed for deployment as a Render Cron Job (UTC‑based schedule).
+"""job_alerts.py
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Hourly job-alert bot for entry-/mid-level **Data-Analytics** roles that sponsor
+H-1B in the USA.
 
-Environment variables required on Render:
-  MJ_API_KEY       – Mailjet API Key
-  MJ_API_SECRET    – Mailjet Secret Key
-  SENDER_EMAIL     – From address (eg. alerts@yourdomain.com)
-  RECIPIENT_EMAIL  – "amarnathreddymalkireddy@gmail.com"
+• Scrapes each career-site URL listed in `companies.json`
+• Filters titles by keywords, removes senior/manager roles
+• Sends a grouped HTML digest via **SendGrid**
+• Designed to run inside GitHub Actions (`.github/workflows/job-alert.yml`)
 
-Files expected in the same directory:
-  companies.json   – List of companies and their career‑page URLs (see template
-                     at bottom of this file).
+Environment variables required by the workflow:
+  SENDGRID_API_KEY   – from SendGrid dashboard
+  SENDER_EMAIL       – verified sender (the same Gmail you registered)
+  RECIPIENT_EMAIL    – where you want to receive the alerts (your Gmail)
 
-Add or remove companies by editing companies.json – no code changes needed.
+All other settings (keywords, hours, company list) live in this repo and can be
+changed without touching the GitHub Action configuration.
 """
 
 # ---------------------------------------------------------------------------
-# Configuration -------------------------------------------------------------
+# Settings
 # ---------------------------------------------------------------------------
 
-MJ_API_KEY = os.environ["MJ_API_KEY"]
-MJ_API_SECRET = os.environ["MJ_API_SECRET"]
-
-SENDER = os.environ.get("SENDER_EMAIL", "alerts@example.com")
-RECIPIENT = os.environ.get("RECIPIENT_EMAIL", "amarnathreddymalkireddy@gmail.com")
-
-# Keywords that qualify a job as data‑analytics *entry/mid‑level* (tweak as needed)
 KEYWORDS = [
     "data analyst", "business analyst", "analytics", "bi analyst",
     "reporting analyst", "insights analyst"
 ]
 
 US_LOCATION_PATTERN = re.compile(
-    r"\b(United States|USA|U\.S\.|AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|"
-    r"KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|"
+    r"\b(United States|USA|U\.S\.|AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|"  # noqa: E501
+    r"KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|"  # noqa: E501
     r"TX|UT|VT|VA|WA|WV|WI|WY)\b", re.I
 )
 
-COMPANIES_FILE = os.environ.get("COMPANIES_FILE", "companies.json")
+COMPANIES_FILE = "companies.json"
 
 
 # ---------------------------------------------------------------------------
-# Helper Functions ----------------------------------------------------------
+# Helper utilities
 # ---------------------------------------------------------------------------
 
 def load_companies() -> List[Dict]:
-    """Read companies.json and return as list of dicts."""
+    """Load the JSON list of companies to scrape."""
     with open(COMPANIES_FILE, "r", encoding="utf-8") as fh:
         return json.load(fh)
 
 
 def normalize(text: str) -> str:
+    """Lower-case and collapse whitespace for easier keyword matching."""
     return re.sub(r"\s+", " ", text).strip().lower()
 
 
@@ -75,22 +70,26 @@ def in_usa(location: str) -> bool:
     return bool(US_LOCATION_PATTERN.search(location))
 
 
+# ---------------------------------------------------------------------------
+# Scrapers (generic + company-specific)
+# ---------------------------------------------------------------------------
+
 def fetch_generic(company: Dict) -> List[Dict]:
-    """Fallback scraper for career pages rendered server‑side (may miss JS pages)."""
-    jobs = []
-    resp = requests.get(company["url"], timeout=20)
+    """Very simple scraper for career pages rendered server-side."""
+    jobs: List[Dict] = []
+    resp = requests.get(company["url"], timeout=30)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
-    for a in soup.find_all("a", href=True):
-        title = a.get_text(" ", strip=True)
+    for link in soup.find_all("a", href=True):
+        title = link.get_text(" ", strip=True)
         if not title or not is_analytics_role(title):
             continue
-        link = requests.compat.urljoin(company["url"], a["href"])
-        loc_tag = a.find_next(string=re.compile(r"[A-Za-z]{2}\s*,?\s*\w{2}", re.I))
+        href = requests.compat.urljoin(company["url"], link["href"])
+        loc_tag = link.find_next(string=re.compile(r"[A-Za-z]{2}\s*,?\s*\w{2}", re.I))
         loc = loc_tag.strip() if loc_tag else ""
         if loc and not in_usa(loc):
             continue
-        jobs.append({"title": title, "location": loc, "link": link})
+        jobs.append({"title": title, "location": loc, "link": href})
     return jobs
 
 
@@ -99,7 +98,7 @@ def fetch_amazon(_: Dict) -> List[Dict]:
         "https://www.amazon.jobs/en/search.json?"
         "base_query=&category=analytics%20%26%20insights&country=USA&size=50"
     )
-    data = requests.get(url, timeout=20).json()
+    data = requests.get(url, timeout=30).json()
     jobs = []
     for item in data.get("jobs", []):
         title = item["title"]
@@ -114,12 +113,17 @@ def fetch_amazon(_: Dict) -> List[Dict]:
 
 
 def fetch_google(_: Dict) -> List[Dict]:
-    url = "https://rds.google.com/research/roles/list?hl=en_US&jlo=en_US&src=SERP"
-    data = requests.get(url, timeout=20).json()
+    # Google careers JSON endpoint periodically changes; this is a best-effort.
+    api = "https://rds.google.com/research/roles/list?hl=en_US&jlo=en_US&src=SERP"
+    try:
+        data = requests.get(api, timeout=30).json()
+    except Exception:
+        return []
     jobs = []
     for job in data.get("jobs", []):
         title = job["title"]
-        loc = ", ".join(job["location"]["display_location"].split(",")[:2])
+        loc = job.get("location", {}).get("display_location", "")
+        loc = ", ".join(loc.split(",")[:2])
         if not is_analytics_role(title) or not in_usa(loc):
             continue
         jobs.append({
@@ -145,10 +149,21 @@ def get_jobs(company: Dict) -> List[Dict]:
         return []
 
 
-def build_email(jobs_by_company: Dict[str, List[Dict]]) -> Dict:
+# ---------------------------------------------------------------------------
+# Email builder & sender (SendGrid)
+# ---------------------------------------------------------------------------
+
+SENDGRID_API_KEY = os.environ["SENDGRID_API_KEY"]
+
+
+def build_email(jobs_by_company: Dict[str, List[Dict]]) -> Dict[str, str]:
     now = dt.datetime.now(dt.timezone.utc).astimezone()
-    subject = f"[{now:%-I %p}] New Data Analyst Jobs (H1B‑Friendly)"
-    sections = []
+    subject = f"[{now:%-I %p}] New Data Analyst Jobs (H1B-Friendly)"
+    if not any(jobs_by_company.values()):
+        html = "<p>No new jobs found this hour.</p>"
+        return {"subject": subject, "html": html}
+
+    sections: List[str] = []
     for comp, jobs in sorted(jobs_by_company.items()):
         if not jobs:
             continue
@@ -157,27 +172,27 @@ def build_email(jobs_by_company: Dict[str, List[Dict]]) -> Dict:
             loc = f" – {j['location']}" if j['location'] else ""
             sections.append(f"<li><a href='{j['link']}'>{j['title']}</a>{loc}</li>")
         sections.append("</ul>")
-    html_body = "\n".join(sections) if sections else "<p>No new jobs found this hour.</p>"
-    return {"subject": subject, "html": html_body}
+    html = "\n".join(sections)
+    return {"subject": subject, "html": html}
 
 
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
-
-SENDGRID_API_KEY = os.environ["SENDGRID_API_KEY"]
-
-def send_email(email: dict) -> None:
+def send_email(email: Dict[str, str]) -> None:
+    sg = SendGridAPIClient(SENDGRID_API_KEY)
     message = Mail(
         from_email=os.environ.get("SENDER_EMAIL"),
         to_emails=os.environ.get("RECIPIENT_EMAIL"),
         subject=email["subject"],
-        html_content=email["html"]
+        html_content=email["html"],
     )
-    sg = SendGridAPIClient(SENDGRID_API_KEY)
     response = sg.send(message)
     print("SendGrid status:", response.status_code)
     if response.status_code not in (200, 202):
-        raise RuntimeError(f"SendGrid error: {response.status_code}: {response.body}")
+        raise RuntimeError(f"SendGrid error {response.status_code}: {response.body}")
+
+
+# ---------------------------------------------------------------------------
+# Main entrypoint
+# ---------------------------------------------------------------------------
 
 def main() -> None:
     companies = load_companies()
@@ -188,15 +203,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-""" ---------------------------------------------------------------------
-companies.json TEMPLATE (create this file alongside job_alerts.py):
-
-[
-  {"slug": "amazon", "name": "Amazon", "url": "https://www.amazon.jobs/en/search?category=analytics%20%26%20insights&country=USA"},
-  {"slug": "google", "name": "Google", "url": "https://careers.google.com/jobs/results/?distance=50&hl=en_US&employment_type=FULL_TIME&location=United%20States"},
-  {"slug": "microsoft", "name": "Microsoft", "url": "https://careers.microsoft.com/us/en/search-results?keywords=analyst"}
-]
-
-Add more objects as needed – just ensure each has unique "slug" (lowercase, no spaces).
-"""
