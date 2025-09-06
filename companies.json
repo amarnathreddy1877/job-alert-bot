@@ -2,11 +2,13 @@
   {
     "name": "Amazon",
     "url": "https://www.amazon.jobs/en/search?base_query=analyst&country=USA",
-    "location": "USA"
+    "location": "USA",
+    "type": "amazon"
   },
   {
     "name": "Google",
     "url": "https://careers.google.com/jobs/results/?q=analyst&location=United%20States",
-    "location": "USA"
+    "location": "USA",
+    "type": "google"
   }
 ]
