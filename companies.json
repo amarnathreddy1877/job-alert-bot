@@ -13,31 +13,5 @@
     "slug": "microsoft",
     "name": "Microsoft",
     "url": "https://careers.microsoft.com/us/en/search-results?keywords=analyst"
-  }  ,
-  { "slug": "meta",          "name": "Meta (Facebook)", "url": "https://www.metacareers.com/jobs?query=analyst&location=united%20states" },
-  { "slug": "apple",         "name": "Apple",           "url": "https://jobs.apple.com/en-us/search?location=united-states-USA&keyword=analyst" },
-  { "slug": "ibm",           "name": "IBM",             "url": "https://www.ibm.com/careers/us-en/search/?keyword=analyst" },
-  { "slug": "oracle",        "name": "Oracle",          "url": "https://eeho.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobSearch?keyword=analyst&location=United%20States" },
-  { "slug": "salesforce",    "name": "Salesforce",      "url": "https://careers.salesforce.com/en/jobs/?location=United%20States&keywords=analyst" },
-  { "slug": "adobe",         "name": "Adobe",           "url": "https://adobe.wd5.myworkdayjobs.com/en-US/external_experienced/search?keywords=analyst&locations=17f5a25c101d01e954bd3500c502db5c" },
-  { "slug": "sap",           "name": "SAP",             "url": "https://jobs.sap.com/search/?q=analyst&locationsearch=United+States" },
-  { "slug": "nvidia",        "name": "NVIDIA",          "url": "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/search?keywords=analyst&locations=51b6a3294906100d6b9f1d0b4b610002" },
-  { "slug": "intel",         "name": "Intel",           "url": "https://jobs.intel.com/en/search-jobs/analyst/united-states/599/1" },
-  { "slug": "tesla",         "name": "Tesla",           "url": "https://www.tesla.com/careers/search/?country=US&query=analyst" },
-  { "slug": "uber",          "name": "Uber",            "url": "https://www.uber.com/us/en/careers/list/?search=analyst&location=United%20States" },
-  { "slug": "lyft",          "name": "Lyft",            "url": "https://www.lyft.com/careers?location=United%20States&search=analyst" },
-  { "slug": "airbnb",        "name": "Airbnb",          "url": "https://careers.airbnb.com/positions/?search=analyst" },
-  { "slug": "stripe",        "name": "Stripe",          "url": "https://stripe.com/jobs/search?location=usa&query=analyst" },
-  { "slug": "paypal",        "name": "PayPal",          "url": "https://paypal.eightfold.ai/careers?query=analyst&location=United%20States" },
-  { "slug": "block",         "name": "Block (Square)",  "url": "https://block.xyz/careers?query=analyst&location=United%20States" },
-  { "slug": "bloomberg",     "name": "Bloomberg",       "url": "https://careers.bloomberg.com/job/search?keywords=analyst&location=united%20states" },
-  { "slug": "jpmorgan",      "name": "JPMorgan Chase",  "url": "https://careers.jpmorgan.com/us/en/search-results?keywords=analyst&location=United%20States" },
-  { "slug": "goldman",       "name": "Goldman Sachs",   "url": "https://www.goldmansachs.com/careers/search.html?All_Keywords=analyst&loc=United%20States" },
-  { "slug": "capitalone",    "name": "Capital One",     "url": "https://www.capitalonecareers.com/job-search-results/?keywords=analyst" },
-  { "slug": "deloitte",      "name": "Deloitte",        "url": "https://usijobs.deloitte.com/jobs/search?q=analyst" },
-  { "slug": "pwc",           "name": "PwC",             "url": "https://jobs.us.pwc.com/?keywords=analyst" },
-  { "slug": "ey",            "name": "EY (Ernst & Young)", "url": "https://eyglobal.yello.co/jobs?search_terms=analyst&country=United%20States" },
-  { "slug": "accenture",     "name": "Accenture",       "url": "https://www.accenture.com/us-en/careers/jobsearch?jk=analyst" },
-  { "slug": "cognizant",     "name": "Cognizant",       "url": "https://careers.cognizant.com/global/en/search-results?keywords=analyst&location=United%20States" }
-
+  }  
 ]
