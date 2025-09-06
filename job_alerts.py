@@ -1,41 +1,38 @@
 import os
 import re
-import json
 import datetime as dt
+import requests
+from bs4 import BeautifulSoup
 from typing import List, Dict
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
-from bs4 import BeautifulSoup
-import requests
+
+# Load environment variables
+SENDGRID_API_KEY = os.environ["SENDGRID_API_KEY"]
+SENDER_EMAIL = os.environ["SENDER_EMAIL"]
+RECIPIENT_EMAIL = os.environ["RECIPIENT_EMAIL"]
 
 # ---------------------------------------------------------------------------
-# Load companies list from JSON
+# Utility: check if a job matches criteria
 # ---------------------------------------------------------------------------
-def load_companies(path: str = "companies.json") -> List[Dict[str, str]]:
-    with open(path, "r") as fh:
-        return json.load(fh)
+def is_data_analyst_job(title: str, desc: str) -> bool:
+    title = re.sub(r"\s+", " ", title).strip().lower()
+    desc = desc.lower()
+    return "analyst" in title
 
 # ---------------------------------------------------------------------------
-# Keyword matcher
+# Scrape jobs from companies.json
 # ---------------------------------------------------------------------------
-
-def is_data_analyst_job(title: str, description: str) -> bool:
-    title = re.sub("\s+", " ", title).strip().lower()
-    description = description.lower()
-    return "analyst" in title or "data analyst" in description
-
-# ---------------------------------------------------------------------------
-# Scraper
-# ---------------------------------------------------------------------------
-
-def scrape_jobs(companies: List[Dict[str, str]]) -> List[Dict]:
+def scrape_jobs(companies: List[Dict]) -> List[Dict]:
     jobs = []
     for company in companies:
         url = company["url"]
+        print(f"Scraping: {company['name']} - {url}")
         try:
             res = requests.get(url, timeout=15)
             soup = BeautifulSoup(res.text, "html.parser")
             links = soup.find_all("a", href=True)
+
             for a in links:
                 job_title = a.get_text(strip=True)
                 href = a["href"]
@@ -45,48 +42,57 @@ def scrape_jobs(companies: List[Dict[str, str]]) -> List[Dict]:
                     job_res = requests.get(job_url, timeout=10)
                     job_soup = BeautifulSoup(job_res.text, "html.parser")
                     job_desc = job_soup.get_text()
+
                     if is_data_analyst_job(job_title, job_desc):
-                        jobs.append({
+                        job_info = {
                             "title": job_title,
                             "url": job_url,
                             "company": company["name"],
                             "location": company.get("location", "")
-                        })
-                except:
+                        }
+                        print("Matched:", job_info)
+                        jobs.append(job_info)
+
+                except Exception as e:
+                    print("Inner job page error:", e)
                     continue
-        except:
+
+        except Exception as e:
+            print("Main company page error:", e)
             continue
+
     return jobs
 
 # ---------------------------------------------------------------------------
-# Email builder & sender (SendGrid)
+# Email builder
 # ---------------------------------------------------------------------------
-
-SENDGRID_API_KEY = os.environ["SENDGRID_API_KEY"]
-SENDER_EMAIL = os.environ["SENDER_EMAIL"]
-RECIPIENT_EMAIL = os.environ["RECIPIENT_EMAIL"]
-
 def build_email(jobs_by_company: Dict[str, List[Dict]]) -> Dict[str, str]:
     now = dt.datetime.now(dt.timezone.utc).astimezone()
-    subject = f"[{now:%-I %p}] New Data Analyst Jobs (H1B-Friendly)"
+    subject = f"[{now:%-I %p}] New Data Analyst Jobs"
 
     if not any(jobs_by_company.values()):
-        html = "<p>No data analyst jobs were found in this hour’s scan. We’ll keep checking hourly!</p>"
+        html = "<p>No new jobs found this hour.</p>"
         return {"subject": subject, "html": html}
 
     sections: List[str] = []
-    for comp, jobs in sorted(jobs_by_company.items()):
+    for company, jobs in jobs_by_company.items():
         if not jobs:
             continue
-        sections.append(f"<h3>{comp}</h3><ul>")
-        for j in jobs:
-            loc = f" – {j['location']}" if j['location'] else ""
-            sections.append(f"<li><a href='{j['url']}'>{j['title']}</a>{loc}</li>")
+        sections.append(f"<h3>{company}</h3><ul>")
+        for job in jobs:
+            title = job.get("title", "Job Opening")
+            url = job.get("url", "#")
+            location = job.get("location", "")
+            location_text = f" – {location}" if location else ""
+            sections.append(f"<li><a href='{url}'>{title}</a>{location_text}</li>")
         sections.append("</ul>")
 
     html = "\n".join(sections)
     return {"subject": subject, "html": html}
 
+# ---------------------------------------------------------------------------
+# Email sender (SendGrid)
+# ---------------------------------------------------------------------------
 def send_email(email: Dict[str, str]) -> None:
     sg = SendGridAPIClient(SENDGRID_API_KEY)
     message = Mail(
@@ -98,21 +104,27 @@ def send_email(email: Dict[str, str]) -> None:
     response = sg.send(message)
     print("SendGrid status:", response.status_code)
     if response.status_code not in (200, 202):
-        print("SendGrid error:", response.body)
         raise RuntimeError(f"SendGrid error {response.status_code}: {response.body}")
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-
 def main():
-    companies = load_companies()
-    jobs = scrape_jobs(companies)
+    import json
+    with open("companies.json", "r") as f:
+        companies = json.load(f)
 
+    jobs = scrape_jobs(companies)
     jobs_by_company: Dict[str, List[Dict]] = {}
     for job in jobs:
         comp = job["company"]
         jobs_by_company.setdefault(comp, []).append(job)
+
+    print("\nJobs grouped by company:")
+    for company, jobs in jobs_by_company.items():
+        print(f"- {company}: {len(jobs)} job(s)")
+        for job in jobs:
+            print(f"  → {job['title']} | {job['url']}")
 
     email = build_email(jobs_by_company)
     send_email(email)
