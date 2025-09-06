@@ -2,16 +2,11 @@
   {
     "slug": "amazon",
     "name": "Amazon",
-    "url": "https://www.amazon.jobs/en/search?category=analytics%20%26%20insights&country=USA"
+    "url": "https://www.amazon.jobs/en/search?base_query=%22Data+Analyst%22&country=USA"
   },
   {
     "slug": "google",
     "name": "Google",
-    "url": "https://careers.google.com/jobs/results/?distance=50&employment_type=FULL_TIME&hl=en_US&location=United%20States"
-  },
-  {
-    "slug": "microsoft",
-    "name": "Microsoft",
-    "url": "https://careers.microsoft.com/us/en/search-results?keywords=analyst"
-  }  
+    "url": "https://careers.google.com/jobs/results/?q=analyst&location=United+States"
+  }
 ]
