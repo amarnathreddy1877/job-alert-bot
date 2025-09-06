@@ -1,18 +1,9 @@
 [
-  { "name": "Stripe",       "type": "greenhouse",      "board": "stripe" },
-  { "name": "Databricks",   "type": "greenhouse",      "board": "databricks" },
-  { "name": "Snowflake",    "type": "smartrecruiters", "company": "snowflake" },
-  { "name": "DoorDash",     "type": "greenhouse",      "board": "doordash" },
-  { "name": "Robinhood",    "type": "greenhouse",      "board": "robinhood" },
-  { "name": "HubSpot",      "type": "greenhouse",      "board": "hubspot" },
-  { "name": "Figma",        "type": "greenhouse",      "board": "figma" },
-  { "name": "Dropbox",      "type": "greenhouse",      "board": "dropbox" },
-  { "name": "Notion",       "type": "greenhouse",      "board": "notion" },
-  { "name": "Affirm",       "type": "greenhouse",      "board": "affirm" },
-  { "name": "Instacart",    "type": "greenhouse",      "board": "instacart" },
-  { "name": "Remitly",      "type": "greenhouse",      "board": "remitly" },
-  { "name": "OpenAI",       "type": "greenhouse",      "board": "openai" },
-  { "name": "Rippling",     "type": "lever",           "site": "rippling" },
-  { "name": "Plaid",        "type": "greenhouse",      "board": "plaid" },
-  { "name": "Chime",        "type": "greenhouse",      "board": "chime" }
+  { "name": "Stripe",     "type": "greenhouse", "board": "stripe" },
+  { "name": "Affirm",     "type": "greenhouse", "board": "affirm" },
+  { "name": "Robinhood",  "type": "greenhouse", "board": "robinhood" },
+  { "name": "Dropbox",    "type": "greenhouse", "board": "dropbox" },
+  { "name": "Figma",      "type": "greenhouse", "board": "figma" },
+  { "name": "Instacart",  "type": "greenhouse", "board": "instacart" },
+  { "name": "Chime",      "type": "greenhouse", "board": "chime" }
 ]
