@@ -1,153 +1,112 @@
 import os
 import re
+import json
 import datetime as dt
 import requests
-import json
 from typing import List, Dict
 from bs4 import BeautifulSoup
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 
+# -------------------------
+# Config and Environment
+# -------------------------
+SENDGRID_API_KEY = os.environ["SENDGRID_API_KEY"]
+SENDER_EMAIL = os.environ["SENDER_EMAIL"]
+RECIPIENT_EMAIL = os.environ["RECIPIENT_EMAIL"]
 
-# ------------------------------------------------------------------------------
-# Utilities
-# ------------------------------------------------------------------------------
-
-def is_analyst_job(title: str) -> bool:
+# -------------------------
+# Keyword Matching Logic
+# -------------------------
+def is_data_analyst_job(title: str, desc: str = "") -> bool:
     title = re.sub(r"\s+", " ", title).strip().lower()
-    return "analyst" in title
+    keywords = ["analyst", "analytics", "insights", "business intelligence", "data science"]
+    return any(k in title for k in keywords)
 
-
-# ------------------------------------------------------------------------------
-# Scrapers
-# ------------------------------------------------------------------------------
-
-def scrape_amazon_jobs(url: str, name: str) -> List[Dict]:
-    jobs = []
-    try:
-        res = requests.get(url, timeout=15)
-        soup = BeautifulSoup(res.text, "html.parser")
-        for tile in soup.select(".job-tile"):
-            title_tag = tile.select_one(".job-title")
-            if not title_tag:
-                continue
-            title = title_tag.get_text(strip=True)
-            link = tile.find("a", href=True)
-            href = link["href"] if link else ""
-            job_url = "https://www.amazon.jobs" + href if href.startswith("/") else href
-            if is_analyst_job(title):
-                jobs.append({
-                    "title": title,
-                    "url": job_url,
-                    "company": name,
-                    "location": "USA"
-                })
-    except Exception as e:
-        print(f"[Amazon Error] {e}")
-    return jobs
-
-
-def scrape_google_jobs(url: str, name: str) -> List[Dict]:
-    jobs = []
-    try:
-        res = requests.get(url, timeout=15)
-        soup = BeautifulSoup(res.text, "html.parser")
-        for a in soup.find_all("a", href=True):
-            title = a.get_text(strip=True)
-            href = a["href"]
-            if "jobs/results" not in href:
-                continue
-            job_url = "https://careers.google.com" + href if href.startswith("/") else href
-            if is_analyst_job(title):
-                jobs.append({
-                    "title": title,
-                    "url": job_url,
-                    "company": name,
-                    "location": "USA"
-                })
-    except Exception as e:
-        print(f"[Google Error] {e}")
-    return jobs
-
-
-def scrape_generic_jobs(url: str, name: str) -> List[Dict]:
-    jobs = []
-    try:
-        res = requests.get(url, timeout=15)
-        soup = BeautifulSoup(res.text, "html.parser")
-        for a in soup.find_all("a", href=True):
-            title = a.get_text(strip=True)
-            href = a["href"]
-            job_url = href if href.startswith("http") else url.rstrip("/") + "/" + href
-            if is_analyst_job(title):
-                jobs.append({
-                    "title": title,
-                    "url": job_url,
-                    "company": name,
-                    "location": "USA"
-                })
-    except Exception as e:
-        print(f"[Generic Error] {e}")
-    return jobs
-
-
-def scrape_jobs(companies: List[Dict[str, str]]) -> List[Dict[str, str]]:
+# -------------------------
+# Scraping Function
+# -------------------------
+def scrape_jobs(companies: List[Dict[str, str]]) -> List[Dict]:
     jobs = []
     for company in companies:
         name = company["name"]
         url = company["url"]
-        ctype = company.get("type", "generic")
+        location = company.get("location", "")
 
-        print(f"🔍 Scraping jobs for: {name} — {url}")
-        if ctype == "amazon":
-            company_jobs = scrape_amazon_jobs(url, name)
-        elif ctype == "google":
-            company_jobs = scrape_google_jobs(url, name)
-        else:
-            company_jobs = scrape_generic_jobs(url, name)
+        print(f"\n🔍 Scraping jobs for: {name} — {url}")
+        try:
+            res = requests.get(url, timeout=20)
+            soup = BeautifulSoup(res.text, "html.parser")
 
-        print(f"[{name}] Found {len(company_jobs)} matched jobs")
-        jobs.extend(company_jobs)
+            links = soup.find_all("a", href=True)
+            print(f"[{name}] Found {len(links)} total links")
 
+            match_count = 0
+            for a in links:
+                job_title = a.get_text(strip=True)
+                if not job_title or len(job_title) < 4:
+                    continue
+                href = a["href"]
+                job_url = href if href.startswith("http") else url.rstrip("/") + "/" + href
+
+                # Optional: Fetch individual job page to check description
+                try:
+                    job_res = requests.get(job_url, timeout=10)
+                    job_desc = job_res.text.lower()
+                except:
+                    job_desc = ""
+
+                if is_data_analyst_job(job_title, job_desc):
+                    jobs.append({
+                        "company": name,
+                        "title": job_title,
+                        "link": job_url,
+                        "location": location
+                    })
+                    match_count += 1
+            print(f"[{name}] Found {match_count} matched jobs")
+
+        except Exception as e:
+            print(f"[{name}] Error: {e}")
+            continue
     return jobs
 
-
-# ------------------------------------------------------------------------------
-# Email sender
-# ------------------------------------------------------------------------------
-
-def build_email(jobs: List[Dict[str, str]]) -> Dict[str, str]:
-    now = dt.datetime.now(dt.timezone.utc).astimezone()
-    subject = f"[{now:%-I %p}] Data Analyst Job Alerts (Hourly)"
-
-    if not jobs:
-        html = "<p>No new jobs found this hour.</p>"
-        return {"subject": subject, "html": html}
-
+# -------------------------
+# Group by Company
+# -------------------------
+def group_jobs_by_company(jobs: List[Dict]) -> Dict[str, List[Dict]]:
     grouped = {}
     for job in jobs:
         grouped.setdefault(job["company"], []).append(job)
+    return grouped
 
-    sections = []
-    for comp, jobs in sorted(grouped.items()):
+# -------------------------
+# Build Email
+# -------------------------
+def build_email(jobs_by_company: Dict[str, List[Dict]]) -> Dict[str, str]:
+    now = dt.datetime.now(dt.timezone.utc).astimezone()
+    subject = f"[{now:%-I %p}] New Data Analyst Jobs"
+
+    if not any(jobs_by_company.values()):
+        html = "<p>No new jobs found this hour.</p>"
+        return {"subject": subject, "html": html}
+
+    sections: List[str] = []
+    for comp, jobs in sorted(jobs_by_company.items()):
+        if not jobs:
+            continue
         sections.append(f"<h3>{comp}</h3><ul>")
         for j in jobs:
             loc = f" – {j['location']}" if j['location'] else ""
-            sections.append(f"<li><a href='{j['url']}'>{j['title']}</a>{loc}</li>")
+            sections.append(f"<li><a href='{j['link']}'>{j['title']}</a>{loc}</li>")
         sections.append("</ul>")
-
     html = "\n".join(sections)
     return {"subject": subject, "html": html}
 
-
+# -------------------------
+# Send Email via SendGrid
+# -------------------------
 def send_email(email: Dict[str, str]) -> None:
-    SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY")
-    SENDER_EMAIL = os.environ.get("SENDER_EMAIL")
-    RECIPIENT_EMAIL = os.environ.get("RECIPIENT_EMAIL")
-
-    if not (SENDGRID_API_KEY and SENDER_EMAIL and RECIPIENT_EMAIL):
-        raise ValueError("Missing one of SENDGRID_API_KEY, SENDER_EMAIL, or RECIPIENT_EMAIL")
-
     sg = SendGridAPIClient(SENDGRID_API_KEY)
     message = Mail(
         from_email=SENDER_EMAIL,
@@ -158,25 +117,25 @@ def send_email(email: Dict[str, str]) -> None:
     response = sg.send(message)
     print("SendGrid status:", response.status_code)
     if response.status_code not in (200, 202):
-        print("Response:", response.body)
-        raise RuntimeError(f"SendGrid error {response.status_code}")
+        raise RuntimeError(f"SendGrid error {response.status_code}: {response.body}")
 
-
-# ------------------------------------------------------------------------------
-# Main
-# ------------------------------------------------------------------------------
-
+# -------------------------
+# Load Company URLs
+# -------------------------
 def load_companies() -> List[Dict[str, str]]:
-    with open("companies.json", "r") as fh:
+    with open("companies.json", "r", encoding="utf-8") as fh:
         return json.load(fh)
 
-
+# -------------------------
+# Main
+# -------------------------
 def main():
     companies = load_companies()
     jobs = scrape_jobs(companies)
-    email = build_email(jobs)
+    jobs_by_company = group_jobs_by_company(jobs)
+    print(f"\n📝 Summary: {sum(len(j) for j in jobs_by_company.values())} jobs matched across {len(jobs_by_company)} companies.\n")
+    email = build_email(jobs_by_company)
     send_email(email)
-
 
 if __name__ == "__main__":
     main()
