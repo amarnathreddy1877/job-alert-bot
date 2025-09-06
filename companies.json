@@ -1,5 +1,9 @@
 [
   {
+    "name": "Monster",
+    "url": "https://www.monster.com/jobs/search/?q=analyst&where=United-States"
+  },
+  {
     "name": "Dice",
     "url": "https://www.dice.com/jobs?q=analyst&countryCode=US"
   }
