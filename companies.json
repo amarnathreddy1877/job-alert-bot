@@ -1,12 +1,12 @@
 [
   {
-    "slug": "google",
-    "name": "Google",
-    "url": "https://careers.google.com/jobs/results/?q=analyst&location=United+States"
+    "name": "Amazon",
+    "url": "https://www.amazon.jobs/en/search?base_query=data+analyst&country=USA",
+    "location": "USA"
   },
   {
-    "slug": "amazon",
-    "name": "Amazon",
-    "url": "https://www.amazon.jobs/en/search?base_query=analyst&country=USA"
+    "name": "Google",
+    "url": "https://careers.google.com/jobs/results/?q=analyst&location=United%20States",
+    "location": "USA"
   }
 ]
