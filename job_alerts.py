@@ -40,7 +40,7 @@ def is_data_analyst_job(title, description):
 
     # Match at least 2 skill keywords in description
     skill_matches = sum(1 for skill in SKILL_KEYWORDS if skill in description)
-    return skill_matches >= 2
+    return skill_matches >= 1
 
 # Scrape jobs from each company
 
