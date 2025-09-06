@@ -37,21 +37,22 @@ def scrape_jobs(companies: List[Dict]) -> List[Dict]:
             matched = 0
             for a in anchors:
                 title = a.get_text(strip=True)
-                title = re.sub(r"\s+", " ", title).strip().lower()
+                title_clean = re.sub(r"\s+", " ", title).strip().lower()
                 href = a["href"]
                 job_url = href if href.startswith("http") else url.rstrip("/") + "/" + href
 
-                # Filtering
-                if name.lower() == "google" and "/jobs/results/" not in href:
+                # --- SMART LINK FILTER ---
+                if name.lower() == "google" and not re.search(r"/jobs/results/\d+", href):
                     continue
-                elif name.lower() == "amazon" and not re.search(r"/job/", href):
+                if name.lower() == "amazon" and not re.search(r"/job/", href):
                     continue
 
-                if "analyst" in title:
+                # --- FLEXIBLE MATCH ---
+                if "analyst" in title_clean and len(title_clean.split()) < 12:
                     jobs.append({
                         "title": title.title(),
                         "url": job_url,
-                        "company": name,
+                        "company": name
                     })
                     matched += 1
 
@@ -60,6 +61,7 @@ def scrape_jobs(companies: List[Dict]) -> List[Dict]:
             print(f"[{name}] Error scraping: {e}")
             continue
     return jobs
+
 
 # ---------------------------------------------------------------------------
 # Organize by company
