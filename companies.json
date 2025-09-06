@@ -1,10 +1,18 @@
 [
   {
-    "name": "Monster",
-    "url": "https://www.monster.com/jobs/search/?q=analyst&where=United-States"
+    "name": "RemoteOK",
+    "url": "https://remoteok.com/remote-analyst-jobs"
   },
   {
-    "name": "Dice",
-    "url": "https://www.dice.com/jobs?q=analyst&countryCode=US"
+    "name": "Wellfound",
+    "url": "https://wellfound.com/jobs"
+  },
+  {
+    "name": "YCombinator",
+    "url": "https://www.ycombinator.com/jobs"
+  },
+  {
+    "name": "Levels.fyi",
+    "url": "https://www.levels.fyi/jobs/"
   }
 ]
