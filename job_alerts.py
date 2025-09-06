@@ -1,48 +1,50 @@
 import os
 import re
 import json
-import requests
+import datetime as dt
+from typing import List, Dict
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 from bs4 import BeautifulSoup
-from datetime import datetime
+import requests
 
-SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
-FROM_EMAIL = os.getenv("FROM_EMAIL")
-TO_EMAIL = os.getenv("TO_EMAIL")
+# ---------------------------------------------------------------------------
+# Load companies list from JSON
+# ---------------------------------------------------------------------------
+def load_companies(path: str = "companies.json") -> List[Dict[str, str]]:
+    with open(path, "r") as fh:
+        return json.load(fh)
 
-# --- Job Matching Logic ---
-KEYWORDS = [
-    "sql", "python", "r", "tableau", "power bi", "looker",
-    "excel", "data visualization", "statistics", "analytics", "dashboard", "reporting", "ETL"
-]
+# ---------------------------------------------------------------------------
+# Keyword matcher
+# ---------------------------------------------------------------------------
 
-# Flexible match: any job title with "analyst"
-def is_data_analyst_job(title, description):
-    if "analyst" in title.lower():
-        return True
-    match_count = sum(1 for kw in KEYWORDS if re.search(rf"\\b{kw}\\b", description.lower()))
-    return match_count >= 2
+def is_data_analyst_job(title: str, description: str) -> bool:
+    title = re.sub("\s+", " ", title).strip().lower()
+    description = description.lower()
+    return "analyst" in title or "data analyst" in description
 
-# --- Scraper Function ---
-def scrape_jobs(companies):
+# ---------------------------------------------------------------------------
+# Scraper
+# ---------------------------------------------------------------------------
+
+def scrape_jobs(companies: List[Dict[str, str]]) -> List[Dict]:
     jobs = []
     for company in companies:
         url = company["url"]
         try:
             res = requests.get(url, timeout=15)
             soup = BeautifulSoup(res.text, "html.parser")
-
             links = soup.find_all("a", href=True)
             for a in links:
                 job_title = a.get_text(strip=True)
                 href = a["href"]
                 job_url = href if href.startswith("http") else url.rstrip("/") + "/" + href
 
-                # Fetch job page
                 try:
                     job_res = requests.get(job_url, timeout=10)
                     job_soup = BeautifulSoup(job_res.text, "html.parser")
                     job_desc = job_soup.get_text()
-
                     if is_data_analyst_job(job_title, job_desc):
                         jobs.append({
                             "title": job_title,
@@ -56,54 +58,64 @@ def scrape_jobs(companies):
             continue
     return jobs
 
-# --- Email Sender ---
-def send_email(subject, content):
-    data = {
-        "personalizations": [{"to": [{"email": TO_EMAIL}]}],
-        "from": {"email": FROM_EMAIL},
-        "subject": subject,
-        "content": [{"type": "text/plain", "value": content}]
-    }
+# ---------------------------------------------------------------------------
+# Email builder & sender (SendGrid)
+# ---------------------------------------------------------------------------
 
-    response = requests.post(
-        "https://api.sendgrid.com/v3/mail/send",
-        headers={
-            "Authorization": f"Bearer {SENDGRID_API_KEY}",
-            "Content-Type": "application/json"
-        },
-        json=data
+SENDGRID_API_KEY = os.environ["SENDGRID_API_KEY"]
+SENDER_EMAIL = os.environ["SENDER_EMAIL"]
+RECIPIENT_EMAIL = os.environ["RECIPIENT_EMAIL"]
+
+def build_email(jobs_by_company: Dict[str, List[Dict]]) -> Dict[str, str]:
+    now = dt.datetime.now(dt.timezone.utc).astimezone()
+    subject = f"[{now:%-I %p}] New Data Analyst Jobs (H1B-Friendly)"
+
+    if not any(jobs_by_company.values()):
+        html = "<p>No data analyst jobs were found in this hour’s scan. We’ll keep checking hourly!</p>"
+        return {"subject": subject, "html": html}
+
+    sections: List[str] = []
+    for comp, jobs in sorted(jobs_by_company.items()):
+        if not jobs:
+            continue
+        sections.append(f"<h3>{comp}</h3><ul>")
+        for j in jobs:
+            loc = f" – {j['location']}" if j['location'] else ""
+            sections.append(f"<li><a href='{j['url']}'>{j['title']}</a>{loc}</li>")
+        sections.append("</ul>")
+
+    html = "\n".join(sections)
+    return {"subject": subject, "html": html}
+
+def send_email(email: Dict[str, str]) -> None:
+    sg = SendGridAPIClient(SENDGRID_API_KEY)
+    message = Mail(
+        from_email=SENDER_EMAIL,
+        to_emails=RECIPIENT_EMAIL,
+        subject=email["subject"],
+        html_content=email["html"],
     )
+    response = sg.send(message)
     print("SendGrid status:", response.status_code)
-    print("Response:", response.text)
+    if response.status_code not in (200, 202):
+        print("SendGrid error:", response.body)
+        raise RuntimeError(f"SendGrid error {response.status_code}: {response.body}")
 
-# --- Load Companies ---
-def load_companies():
-    with open("companies.json", "r") as fh:
-        return json.load(fh)
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 
-# --- Main Script ---
 def main():
     companies = load_companies()
     jobs = scrape_jobs(companies)
 
-    if jobs:
-        print(f"Found {len(jobs)} matching jobs")
-        grouped = {}
-        for job in jobs:
-            grouped.setdefault(job["company"], []).append(job)
+    jobs_by_company: Dict[str, List[Dict]] = {}
+    for job in jobs:
+        comp = job["company"]
+        jobs_by_company.setdefault(comp, []).append(job)
 
-        message_lines = ["Here are the latest data analyst jobs:"]
-        for company, postings in grouped.items():
-            message_lines.append(f"\n{company}:")
-            for job in postings:
-                message_lines.append(f"- {job['title']}\n  {job['url']}")
-        content = "\n".join(message_lines)
-        subject = f"{len(jobs)} New Data Analyst Job(s) Found - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-    else:
-        content = "No data analyst jobs were found in this hour’s scan. We’ll keep checking hourly!"
-        subject = f"No Jobs Found - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-
-    send_email(subject, content)
+    email = build_email(jobs_by_company)
+    send_email(email)
 
 if __name__ == "__main__":
     main()
