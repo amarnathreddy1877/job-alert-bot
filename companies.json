@@ -1,14 +1,6 @@
 [
   {
-    "name": "Amazon",
-    "url": "https://www.amazon.jobs/en/search?base_query=analyst&country=USA",
-    "location": "USA",
-    "type": "amazon"
-  },
-  {
-    "name": "Google",
-    "url": "https://careers.google.com/jobs/results/?q=analyst&location=United%20States",
-    "location": "USA",
-    "type": "google"
+    "name": "Dice",
+    "url": "https://www.dice.com/jobs?q=analyst&countryCode=US"
   }
 ]
