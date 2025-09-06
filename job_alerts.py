@@ -1,49 +1,31 @@
-# job_alerts.py
-
-import requests
-import json
-import re
 import os
+import re
+import json
+import requests
 from bs4 import BeautifulSoup
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
 
-# -----------------------------
-# SMART JOB MATCHING KEYWORDS
-# -----------------------------
-ROLE_KEYWORDS = [
-    "data analyst", "business analyst", "analytics", "bi analyst", "product analyst",
-    "reporting analyst", "research analyst", "marketing analyst"
-]
+SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
+FROM_EMAIL = os.getenv("FROM_EMAIL")
+TO_EMAIL = os.getenv("TO_EMAIL")
 
-SKILL_KEYWORDS = [
-    "sql", "python", "r", "excel", "tableau", "power bi", "looker", "dashboard",
-    "data visualization", "etl", "bigquery", "snowflake", "data wrangling",
-    "pandas", "numpy", "statistics", "predictive modeling", "regression", "ab testing"
-]
-
-# Load companies list
-
-def load_companies():
-    with open("companies.json", "r") as fh:
-        return json.load(fh)
-
-# Job matching logic
-
+# --- Job Filter Function ---
 def is_data_analyst_job(title, description):
     title = title.lower()
     description = description.lower()
-    
-    # Match role keyword in title
-    if not any(role in title for role in ROLE_KEYWORDS):
-        return False
 
-    # Match at least 2 skill keywords in description
-    skill_matches = sum(1 for skill in SKILL_KEYWORDS if skill in description)
-    return skill_matches >= 1
+    if "analyst" in title:
+        return True
 
-# Scrape jobs from each company
+    SKILL_KEYWORDS = [
+        "sql", "python", "r", "tableau", "power bi", "looker",
+        "data visualization", "dashboard", "etl", "data pipeline",
+        "statistics", "machine learning", "data modeling", "big data"
+    ]
 
+    skills_matched = [kw for kw in SKILL_KEYWORDS if kw in description]
+    return len(skills_matched) >= 2
+
+# --- Scraper Function ---
 def scrape_jobs(companies):
     jobs = []
     for company in companies:
@@ -58,7 +40,6 @@ def scrape_jobs(companies):
                 href = a["href"]
                 job_url = href if href.startswith("http") else url.rstrip("/") + "/" + href
 
-                # Fetch the job page to get description
                 try:
                     job_res = requests.get(job_url, timeout=10)
                     job_soup = BeautifulSoup(job_res.text, "html.parser")
@@ -77,43 +58,54 @@ def scrape_jobs(companies):
             continue
     return jobs
 
-# Send email using SendGrid
+# --- Email Sender ---
+def send_email(jobs, no_matches=False):
+    content = ""
 
-def send_email(jobs):
-    if not jobs:
-        print("No matched jobs to email.")
-        return
+    if no_matches:
+        content = "<b>No data analyst jobs were found in this hour’s scan.</b><br>We’ll keep checking hourly!"
+    else:
+        for job in jobs:
+            content += f"🧠 <b>{job['title']}</b><br>"
+            content += f"🏢 {job['company']}<br>"
+            content += f"🌍 {job['location']}<br>"
+            content += f"🔗 <a href='{job['url']}'>Apply Here</a><br><br>"
 
-    SENDER_EMAIL = os.getenv("SENDER_EMAIL")
-    RECIPIENT_EMAIL = os.getenv("RECIPIENT_EMAIL")
-    SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
+    message = {
+        "personalizations": [{"to": [{"email": TO_EMAIL}]}],
+        "from": {"email": FROM_EMAIL},
+        "subject": "📬 Hourly Data Analyst Job Update",
+        "content": [{"type": "text/html", "value": content}],
+    }
 
-    content = "".join(
-        f"- {job['company']}: [{job['title']}]({job['url']}) - {job['location']}\n"
-        for job in jobs
+    response = requests.post(
+        "https://api.sendgrid.com/v3/mail/send",
+        headers={
+            "Authorization": f"Bearer {SENDGRID_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json=message,
     )
 
-    message = Mail(
-        from_email=SENDER_EMAIL,
-        to_emails=RECIPIENT_EMAIL,
-        subject="🧠 Data Analyst Job Alerts",
-        plain_text_content=content,
-        html_content=content.replace("\n", "<br>")
-    )
+    print("SendGrid status:", response.status_code)
+    if response.status_code != 202:
+        print("Response:", response.text)
 
-    try:
-        sg = SendGridAPIClient(SENDGRID_API_KEY)
-        response = sg.send(message)
-        print("SendGrid status:", response.status_code)
-    except Exception as e:
-        print("Send error:", e)
+# --- Load Company List ---
+def load_companies():
+    with open("companies.json") as fh:
+        return json.load(fh)
 
-# Main
-
+# --- Main Entry ---
 def main():
     companies = load_companies()
-    jobs = scrape_jobs(companies)
-    send_email(jobs)
+    matched_jobs = scrape_jobs(companies)
+
+    if matched_jobs:
+        send_email(matched_jobs)
+    else:
+        print("No matched jobs to email.")
+        send_email([], no_matches=True)
 
 if __name__ == "__main__":
     main()
