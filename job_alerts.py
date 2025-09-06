@@ -1,82 +1,123 @@
 import os
 import re
+import time
 import datetime as dt
+from typing import List, Dict
 import requests
 from bs4 import BeautifulSoup
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
+
+# ---------------------------------------------------------------------------
+# Load company list (job boards only)
+# ---------------------------------------------------------------------------
 import json
-from typing import List, Dict
+
+with open("companies.json") as f:
+    companies = json.load(f)
 
 # ---------------------------------------------------------------------------
-# Keywords & Utilities
+# Keyword Matching
 # ---------------------------------------------------------------------------
-
 def is_data_analyst_job(title: str, desc: str) -> bool:
-    title = re.sub("\s+", " ", title).strip().lower()
-    desc = desc.lower()
-    return (
-        "analyst" in title
-        and not any(x in title for x in ["senior", "principal", "lead", "manager", "director"])
-    )
+    title = re.sub(r"\s+", " ", title).strip().lower()
+    return "analyst" in title
 
 # ---------------------------------------------------------------------------
-# Scrapers
+# Scraper Functions for Each Job Board
 # ---------------------------------------------------------------------------
-
-def scrape_monster_jobs(company: Dict) -> List[Dict]:
-    print(f"🔍 Scraping jobs for: {company['name']} — {company['url']}")
+def scrape_remoteok(url: str) -> List[Dict]:
     jobs = []
-    try:
-        res = requests.get(company["url"], timeout=15, headers={"User-Agent": "Mozilla/5.0"})
-        soup = BeautifulSoup(res.text, "html.parser")
-        cards = soup.select("section.card-content")
-        print(f"[{company['name']}] Found {len(cards)} total jobs")
-        for card in cards:
-            title_tag = card.find("h2")
-            link_tag = card.find("a", href=True)
-            if title_tag and link_tag:
-                title = title_tag.get_text(strip=True)
-                link = link_tag["href"]
-                job_desc = title  # Monster doesn't give detail in card, use title only
-                if is_data_analyst_job(title, job_desc):
-                    jobs.append({"title": title, "link": link})
-        print(f"[{company['name']}] Found {len(jobs)} matched jobs")
-    except Exception as e:
-        print(f"[{company['name']}] Error scraping: {e}")
-    return jobs
-
-def scrape_dice_jobs(company: Dict) -> List[Dict]:
-    print(f"🔍 Scraping jobs for: {company['name']} — {company['url']}")
-    jobs = []
-    try:
-        res = requests.get(company["url"], timeout=15, headers={"User-Agent": "Mozilla/5.0"})
-        soup = BeautifulSoup(res.text, "html.parser")
-        cards = soup.select(".card-title-link")
-        print(f"[{company['name']}] Found {len(cards)} total jobs")
-        for a in cards:
-            title = a.get_text(strip=True)
-            link = a["href"]
-            job_desc = title  # Title only
-            if is_data_analyst_job(title, job_desc):
+    headers = {"User-Agent": "Mozilla/5.0"}
+    res = requests.get(url, headers=headers)
+    soup = BeautifulSoup(res.text, "html.parser")
+    rows = soup.find_all("tr", class_="job")
+    for row in rows:
+        title_el = row.find("h2")
+        link_el = row.find("a", class_="preventLink")
+        if title_el and link_el:
+            title = title_el.get_text(strip=True)
+            link = "https://remoteok.com" + link_el.get("href")
+            if is_data_analyst_job(title, title):
                 jobs.append({"title": title, "link": link})
-        print(f"[{company['name']}] Found {len(jobs)} matched jobs")
-    except Exception as e:
-        print(f"[{company['name']}] Error scraping: {e}")
     return jobs
 
-# Add more scrapers below if needed...
+def scrape_wellfound(url: str) -> List[Dict]:
+    jobs = []
+    headers = {"User-Agent": "Mozilla/5.0"}
+    res = requests.get(url, headers=headers)
+    soup = BeautifulSoup(res.text, "html.parser")
+    job_cards = soup.find_all("div", class_="styles_component__mcpF0")
+    for card in job_cards:
+        a_tag = card.find("a")
+        if a_tag:
+            title = a_tag.get_text(strip=True)
+            link = "https://wellfound.com" + a_tag.get("href")
+            if is_data_analyst_job(title, title):
+                jobs.append({"title": title, "link": link})
+    return jobs
+
+def scrape_ycombinator(url: str) -> List[Dict]:
+    jobs = []
+    res = requests.get(url)
+    soup = BeautifulSoup(res.text, "html.parser")
+    cards = soup.find_all("a", class_="job-title")
+    for a in cards:
+        title = a.get_text(strip=True)
+        link = "https://www.ycombinator.com" + a.get("href")
+        if is_data_analyst_job(title, title):
+            jobs.append({"title": title, "link": link})
+    return jobs
+
+def scrape_levels(url: str) -> List[Dict]:
+    jobs = []
+    res = requests.get(url)
+    soup = BeautifulSoup(res.text, "html.parser")
+    cards = soup.find_all("a", class_="job-title")
+    for a in cards:
+        title = a.get_text(strip=True)
+        link = a.get("href")
+        if not link.startswith("http"):
+            link = "https://www.levels.fyi" + link
+        if is_data_analyst_job(title, title):
+            jobs.append({"title": title, "link": link})
+    return jobs
+
+# ---------------------------------------------------------------------------
+# Master Scraper Dispatcher
+# ---------------------------------------------------------------------------
+def scrape_jobs(companies: List[Dict]) -> Dict[str, List[Dict]]:
+    all_jobs = {}
+    for company in companies:
+        name = company["name"]
+        url = company["url"]
+        print(f"\U0001F50D Scraping jobs for: {name} — {url}")
+        try:
+            if "remoteok" in url:
+                jobs = scrape_remoteok(url)
+            elif "wellfound" in url:
+                jobs = scrape_wellfound(url)
+            elif "ycombinator" in url:
+                jobs = scrape_ycombinator(url)
+            elif "levels" in url:
+                jobs = scrape_levels(url)
+            else:
+                jobs = []
+            print(f"[{name}] Found {len(jobs)} matched jobs")
+            all_jobs[name] = jobs
+        except Exception as e:
+            print(f"[{name}] Error: {e}")
+            all_jobs[name] = []
+    return all_jobs
 
 # ---------------------------------------------------------------------------
 # Email builder & sender (SendGrid)
 # ---------------------------------------------------------------------------
 SENDGRID_API_KEY = os.environ["SENDGRID_API_KEY"]
-SENDER_EMAIL = os.environ.get("SENDER_EMAIL")
-RECIPIENT_EMAIL = os.environ.get("RECIPIENT_EMAIL")
 
 def build_email(jobs_by_company: Dict[str, List[Dict]]) -> Dict[str, str]:
     now = dt.datetime.now(dt.timezone.utc).astimezone()
-    subject = f"[{now:%-I %p}] New Data Analyst Jobs"
+    subject = f"[{now:%-I %p}] New Data Analyst Jobs (Recruiter Ready)"
     if not any(jobs_by_company.values()):
         html = "<p>No new jobs found this hour.</p>"
         return {"subject": subject, "html": html}
@@ -95,8 +136,8 @@ def build_email(jobs_by_company: Dict[str, List[Dict]]) -> Dict[str, str]:
 def send_email(email: Dict[str, str]) -> None:
     sg = SendGridAPIClient(SENDGRID_API_KEY)
     message = Mail(
-        from_email=SENDER_EMAIL,
-        to_emails=RECIPIENT_EMAIL,
+        from_email=os.environ.get("SENDER_EMAIL"),
+        to_emails=os.environ.get("RECIPIENT_EMAIL"),
         subject=email["subject"],
         html_content=email["html"],
     )
@@ -106,28 +147,10 @@ def send_email(email: Dict[str, str]) -> None:
         raise RuntimeError(f"SendGrid error {response.status_code}: {response.body}")
 
 # ---------------------------------------------------------------------------
-# Main Execution
+# Run
 # ---------------------------------------------------------------------------
-
 if __name__ == "__main__":
-    with open("companies.json") as f:
-        companies = json.load(f)
-
-    all_jobs: Dict[str, List[Dict]] = {}
-
-    for company in companies:
-        name = company["name"].lower()
-        if "monster" in name:
-            jobs = scrape_monster_jobs(company)
-        elif "dice" in name:
-            jobs = scrape_dice_jobs(company)
-        else:
-            print(f"Skipping {company['name']}: no scraper implemented.")
-            jobs = []
-        all_jobs[company["name"]] = jobs
-
-    summary = sum(len(j) for j in all_jobs.values())
-    print(f"📝 Summary: {summary} jobs matched across {len(all_jobs)} companies.")
-
-    email = build_email(all_jobs)
+    jobs_by_company = scrape_jobs(companies)
+    print(f"\n\U0001F4DD Summary: {sum(len(v) for v in jobs_by_company.values())} jobs matched across {len(jobs_by_company)} companies.")
+    email = build_email(jobs_by_company)
     send_email(email)
