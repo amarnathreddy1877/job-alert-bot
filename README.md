@@ -17,7 +17,7 @@ Structured job data pulled directly from **ATS APIs** → filtered → deduplica
 - **Signal over noise** → only analyst roles, not engineers/designers/managers  
 - **Stable ingestion** → powered by official **ATS JSON APIs** (Greenhouse, Lever, SmartRecruiters), not fragile HTML scraping  
 - **Ops-minded** → retries, backoff, 30-day dedup cache, GitHub Actions scheduler  
-- **Recruiter-ready** → demonstrates practical automation, reliability, and compliance  
+- **Production-minded** → resilient workflows with retries, alerts, and rollbacks 
 
 ---
 
@@ -55,7 +55,7 @@ This project intentionally avoids scraping big job boards or arbitrary portals.
 4. **Performance** → no headless browsers, captchas, or proxies required  
 5. **Focus** → we want clear, clean signals for **US-based analyst roles**  
 
-By using **official ATS feeds**, this bot stays stable, lightweight, and recruiter-friendly.
+By using **official ATS feeds**, this bot stays stable and lightweight.
 
 ---
 
